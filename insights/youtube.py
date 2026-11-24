@@ -62,7 +62,8 @@ def login() -> None:
 def _raise_for_http(e) -> None:
     """Map Google HttpErrors to fail-fast errors. Returns if the error is ignorable."""
     status = getattr(e.resp, "status", None)
-    text = str(e)
+    content = getattr(e, "content", b"") or b""
+    text = str(e) + " " + (content.decode("utf-8", "ignore") if isinstance(content, bytes) else str(content))
     if status == 401:
         raise AuthError(f"YouTube auth rejected: {text}")
     if status == 403 and ("quota" in text.lower() or "rateLimit" in text):

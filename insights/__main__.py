@@ -1,5 +1,6 @@
 """CLI.
 
+  python -m insights check                       verify setup step by step
   python -m insights yt-login                    one-time YouTube browser login
   python -m insights fetch all|youtube|instagram take a snapshot (run 1-2x a day)
   python -m insights report                      write reports/report-YYYY-MM-DD.md
@@ -45,6 +46,43 @@ def cmd_fetch(args) -> int:
     return 1 if failed else 0
 
 
+def cmd_check(args) -> int:
+    """Walk through setup in order and say exactly what is missing."""
+    problems = 0
+
+    def say(good: bool, msg: str, fix: str = "") -> bool:
+        nonlocal problems
+        problems += not good
+        print(f"[{'OK' if good else 'MISSING'}] {msg}" + ("" if good else f"\n          fix: {fix}"))
+        return good
+
+    say((config.ROOT / ".env").exists(), ".env file", "copy .env.example to .env")
+
+    if say(config.YT_CLIENT_SECRET.exists(), f"YouTube OAuth client ({config.YT_CLIENT_SECRET.name})",
+           "README > YouTube steps 1-4"):
+        if say(config.YT_TOKEN.exists(), "YouTube login token", "run: python -m insights yt-login"):
+            try:
+                from googleapiclient.discovery import build
+                from . import youtube
+                yt = build("youtube", "v3", credentials=youtube._credentials(), cache_discovery=False)
+                items = yt.channels().list(part="snippet,statistics", mine=True).execute().get("items", [])
+                say(bool(items), f"YouTube channel: {items[0]['snippet']['title'] if items else 'none'}",
+                    "log in with the Google account that owns the channel")
+            except Exception as e:
+                say(False, f"YouTube API call ({type(e).__name__}: {e})",
+                    "check both APIs are enabled and you are a test user on the consent screen")
+
+    try:
+        from . import instagram
+        me = instagram.Client(instagram.load_token()).get("me", fields="username,account_type,followers_count")
+        say(True, f"Instagram @{me.get('username')} ({me.get('account_type')}, {me.get('followers_count')} followers)")
+    except Exception as e:
+        say(False, f"Instagram ({e})", "README > Instagram steps; paste token into .env as IG_ACCESS_TOKEN")
+
+    print("\nAll set. Run: python -m insights fetch all" if not problems else f"\n{problems} step(s) left.")
+    return 1 if problems else 0
+
+
 def cmd_report(args) -> int:
     from . import report
 
@@ -83,6 +121,7 @@ def _update_post(platform, content_id, **fields) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="insights", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check")
     sub.add_parser("yt-login")
     sub.add_parser("ig-refresh")
     f = sub.add_parser("fetch")
@@ -115,6 +154,8 @@ def main(argv=None) -> int:
     except AuthError as e:
         print(f"STOPPED: {e}", file=sys.stderr)
         return 1
+    if args.cmd == "check":
+        return cmd_check(args)
     if args.cmd == "fetch":
         return cmd_fetch(args)
     if args.cmd == "report":

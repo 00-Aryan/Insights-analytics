@@ -28,6 +28,7 @@ Tag every post with a topic and a hook style. Topic-level results are what tell 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: .venv\Scripts\pip
 cp .env.example .env
+python -m insights check      # tells you the next missing step; re-run after each one
 ```
 
 ### YouTube (about 15 min, one time)
